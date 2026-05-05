@@ -1,0 +1,11 @@
+pyspark
+requests
+beautifulsoup4
+psycopg2-binary
+java --> brew install openjdk@17
+
+
+#########
+python scraper.py
+python etl.py
+python db_load.py

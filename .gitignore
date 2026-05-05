@@ -3,6 +3,27 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Environment Variablen
+.env
+
+# Daten (Data Lake)
+data_lake/
+
+# Spark / Parquet
+*.parquet
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+
 # C extensions
 *.so
 
