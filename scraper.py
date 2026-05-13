@@ -7,6 +7,11 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
+import boto3
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 RAW_DIR = Path("data_lake/raw/")
 RAW_DIR.mkdir(parents=True, exist_ok=True)
@@ -36,6 +41,16 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; BDE-ProjectBot/1.0; educational project)"
 }
 
+def upload_to_s3(local_file, bucket_name, s3_key):
+    s3 = boto3.client("s3")
+
+    s3.upload_file(
+        local_file,
+        bucket_name,
+        s3_key
+    )
+
+    print(f"Uploaded to s3://{bucket_name}/{s3_key}")
 
 def scrape_topseller_app_ids(country_code: str, max_pages: int = 2):
     app_ids = []
@@ -110,6 +125,8 @@ def save_json(data, filename):
 
     print(f"Saved: {path}")
 
+    return path
+
 
 def main():
     today = datetime.now(timezone.utc).date().isoformat()
@@ -137,9 +154,30 @@ def main():
 
             time.sleep(random.uniform(1, 3))
 
-    save_json(topsellers, f"topsellers_{today}.json")
-    save_json(details, f"appdetails_{today}.json")
+    #save_json(topsellers, f"topsellers_{today}.json")
+    #save_json(details, f"appdetails_{today}.json")
+
+    topseller_file = save_json(topsellers, f"topsellers_{today}.json")
+    appdetails_file = save_json(details, f"appdetails_{today}.json")
+
+    bucket_name = os.getenv("AWS_S3_BUCKET")
+
+    if bucket_name:
+        upload_to_s3(
+            local_file=str(topseller_file),
+            bucket_name=bucket_name,
+            s3_key=f"raw/{topseller_file.name}"
+        )
+
+        upload_to_s3(
+            local_file=str(appdetails_file),
+            bucket_name=bucket_name,
+            s3_key=f"raw/{appdetails_file.name}"
+        )
+    else:
+        print("AWS_S3_BUCKET not set. Skipping S3 upload.")
 
 
 if __name__ == "__main__":
     main()
+
