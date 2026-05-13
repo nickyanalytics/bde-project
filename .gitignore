@@ -23,7 +23,6 @@ data_lake/
 # macOS
 .DS_Store
 
-
 # C extensions
 *.so
 

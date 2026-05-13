@@ -1,68 +1,145 @@
+import json
+import time
+import random
+from datetime import datetime, timezone
+from pathlib import Path
+
 import requests
 from bs4 import BeautifulSoup
-import json
-from datetime import datetime
-import os
-
-BASE_URL = "https://books.toscrape.com/catalogue/page-{}.html"
-
-def scrape_page(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    products = []
-
-    for item in soup.find_all("article", class_="product_pod"):
-        title = item.h3.a["title"]
-        price = item.find("p", class_="price_color").text
-        stock = item.find("p", class_="instock availability").text.strip()
-        rating = item.find("p", class_="star-rating")["class"][1] #class="star-rating Two"
 
 
-        rating_map = {
-            "One": 1,
-            "Two": 2,
-            "Three": 3,
-            "Four": 4,
-            "Five": 5
-        }
+RAW_DIR = Path("data_lake/raw/")
+RAW_DIR.mkdir(parents=True, exist_ok=True)
 
-        rating = rating_map.get(rating , 0  ) #default 0 if not found
+# Countries to scrape with their respective country codes for Steam
+COUNTRIES = {
+    "DE": "Germany",
+    "NO": "Norway",
+    "SE": "Sweden",
+}
 
-        products.append({
-            "title": title,
-            "price": price,
-            "stock": stock,
-            "rating": rating,
-            "scrape_time": str(datetime.now())
-        })
+# Base URL for scraping top sellers with filters applied
+# We filter for top sellers in the "Games" category (category1=998) and exclude free-to-play games (hidef2p=1)
+# We also specify supported languages to ensure we get consistent data across countries (supportedlang=german,norwegian,swedish)
+# The "ndl=1" parameter is used to disable dynamic loading of results, which makes scraping easier
+# The "filter=topsellers" parameter ensures we only get top-selling games in the search results
+BASE_SEARCH_URL = (
+    "https://store.steampowered.com/search/"
+    "?supportedlang=german%2Cnorwegian%2Cswedish"
+    "&category1=998"
+    "&hidef2p=1"
+    "&filter=topsellers"
+    "&ndl=1"
+)
 
-    return products
-
-
-def scrape(pages=2):
-    all_products = []
-
-    for page in range(1, pages + 1):
-        url = BASE_URL.format(page)
-        print(f"Scraping: {url}")
-
-        products = scrape_page(url)
-        all_products.extend(products)
-
-    return all_products
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; BDE-ProjectBot/1.0; educational project)"
+}
 
 
-def save(data):
-    os.makedirs("data_lake/raw", exist_ok=True)
-    filename = f"data_lake/raw/books_{datetime.now().date()}.json"
+def scrape_topseller_app_ids(country_code: str, max_pages: int = 2):
+    app_ids = []
 
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
+    for page in range(1, max_pages + 1):
+        url = f"{BASE_SEARCH_URL}&cc={country_code}&page={page}"
+        print(f"Scraping {country_code}: {url}")
 
-    print(f"Saved: {filename}")
+        response = requests.get(url, headers=HEADERS, timeout=20)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        for row in soup.select("a.search_result_row"):
+            app_id = row.get("data-ds-appid")
+
+            if app_id and app_id.isdigit():
+                app_ids.append(int(app_id))
+
+        time.sleep(random.uniform(1, 3))
+
+    return sorted(set(app_ids))
+
+
+def fetch_app_details(app_id: int, country_code: str):
+    url = "https://store.steampowered.com/api/appdetails"
+
+    params = {
+        "appids": app_id,
+        "cc": country_code,
+        "l": "english",
+    }
+
+    response = requests.get(url, params=params, headers=HEADERS, timeout=20)
+    response.raise_for_status()
+
+    payload = response.json()
+    result = payload.get(str(app_id), {})
+
+    if not result.get("success"):
+        return None
+
+    data = result.get("data", {})
+    price = data.get("price_overview") or {}
+
+    return {
+        "country_code": country_code,
+        "app_id": app_id,
+        "name": data.get("name"),
+        "type": data.get("type"),
+        "is_free": data.get("is_free"),
+        "release_date": (data.get("release_date") or {}).get("date"),
+        "developers": data.get("developers", []),
+        "publishers": data.get("publishers", []),
+        "genres": [g.get("description") for g in data.get("genres", [])],
+        "categories": [c.get("description") for c in data.get("categories", [])],
+        "metacritic_score": (data.get("metacritic") or {}).get("score"),
+        "currency": price.get("currency"),
+        "initial_price_cents": price.get("initial"),
+        "final_price_cents": price.get("final"),
+        "discount_percent": price.get("discount_percent"),
+        "final_price_formatted": price.get("final_formatted"),
+        "scrape_timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def save_json(data, filename):
+    path = RAW_DIR / filename
+
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2, ensure_ascii=False)
+
+    print(f"Saved: {path}")
+
+
+def main():
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    topsellers = []
+    details = []
+
+    for country_code in COUNTRIES:
+        app_ids = scrape_topseller_app_ids(country_code, max_pages=1)
+
+        for rank, app_id in enumerate(app_ids, start=1):
+            topsellers.append({
+                "country_code": country_code,
+                "rank": rank,
+                "app_id": app_id,
+                "scrape_date": today,
+            })
+
+        for app_id in app_ids:
+            print(f"Fetching details {country_code} app_id={app_id}")
+            detail = fetch_app_details(app_id, country_code)
+
+            if detail:
+                details.append(detail)
+
+            time.sleep(random.uniform(1, 3))
+
+    save_json(topsellers, f"topsellers_{today}.json")
+    save_json(details, f"appdetails_{today}.json")
 
 
 if __name__ == "__main__":
-    data = scrape(pages=2)
-    save(data)
+    main()
