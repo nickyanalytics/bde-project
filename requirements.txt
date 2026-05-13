@@ -2,6 +2,5 @@ pyspark
 requests
 beautifulsoup4
 psycopg2-binary
-java --> brew install openjdk@17
 boto3
 python-dotenv
