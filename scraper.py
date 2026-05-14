@@ -217,7 +217,8 @@ def main():
             s3_key="logs/last_run.json"
         ) 
     else:
-        print("AWS_S3_BUCKET not set. Skipping S3 upload.")
+        #print("AWS_S3_BUCKET not set. Skipping S3 upload.")
+        raise RuntimeError("AWS_S3_BUCKET not set. S3 upload cannot continue.")
 
 if __name__ == "__main__":
     main()
