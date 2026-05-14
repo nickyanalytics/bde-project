@@ -52,6 +52,21 @@ def upload_to_s3(local_file, bucket_name, s3_key):
 
     print(f"Uploaded to s3://{bucket_name}/{s3_key}")
 
+def write_run_log(status, topsellers_count, details_count):
+    run_log = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": status,
+        "records_topsellers": topsellers_count,
+        "records_details": details_count
+    }
+
+    log_file = RAW_DIR / "last_run.json"
+
+    with open(log_file, "w", encoding="utf-8") as f:
+        json.dump(run_log, f, indent=2)
+
+    return log_file    
+
 def scrape_topseller_app_ids(country_code: str, max_pages: int = 2):
     app_ids = []
 
@@ -129,37 +144,58 @@ def save_json(data, filename):
 
 
 def main():
-    today = datetime.now(timezone.utc).date().isoformat()
 
-    topsellers = []
-    details = []
+    try:
+        
+        today = datetime.now(timezone.utc).date().isoformat()
 
-    for country_code in COUNTRIES:
-        app_ids = scrape_topseller_app_ids(country_code, max_pages=1)
+        topsellers = []
+        details = []
 
-        for rank, app_id in enumerate(app_ids, start=1):
-            topsellers.append({
-                "country_code": country_code,
-                "rank": rank,
-                "app_id": app_id,
-                "scrape_date": today,
-            })
+        for country_code in COUNTRIES:
+            app_ids = scrape_topseller_app_ids(country_code, max_pages=1)
 
-        for app_id in app_ids:
-            print(f"Fetching details {country_code} app_id={app_id}")
-            detail = fetch_app_details(app_id, country_code)
+            for rank, app_id in enumerate(app_ids, start=1):
+                topsellers.append({
+                    "country_code": country_code,
+                    "rank": rank,
+                    "app_id": app_id,
+                    "scrape_date": today,
+                })
 
-            if detail:
-                details.append(detail)
+            for app_id in app_ids:
+                print(f"Fetching details {country_code} app_id={app_id}")
+                detail = fetch_app_details(app_id, country_code)
 
-            time.sleep(random.uniform(1, 3))
+                if detail:
+                    details.append(detail)
 
-    #save_json(topsellers, f"topsellers_{today}.json")
-    #save_json(details, f"appdetails_{today}.json")
+                time.sleep(random.uniform(1, 3))
 
-    topseller_file = save_json(topsellers, f"topsellers_{today}.json")
-    appdetails_file = save_json(details, f"appdetails_{today}.json")
+        #save_json(topsellers, f"topsellers_{today}.json")
+        #save_json(details, f"appdetails_{today}.json")
 
+        topseller_file = save_json(topsellers, f"topsellers_{today}.json")
+        appdetails_file = save_json(details, f"appdetails_{today}.json")
+
+        # Write run log with counts of records
+        log_file = write_run_log(
+            status="success",
+            topsellers_count=len(topsellers),
+            details_count=len(details)
+        ) 
+
+    #something went wrong during scraping or saving
+    except Exception as e:
+        print(f"ERROR: {e}")
+
+        log_file = write_run_log(
+            status="failed",
+            topsellers_count=0,
+            details_count=0
+        )
+
+    #uplodad files to S3 if bucket is configured
     bucket_name = os.getenv("AWS_S3_BUCKET")
 
     if bucket_name:
@@ -174,9 +210,14 @@ def main():
             bucket_name=bucket_name,
             s3_key=f"raw/{appdetails_file.name}"
         )
+
+        upload_to_s3(
+            local_file=str(log_file),
+            bucket_name=bucket_name,
+            s3_key="logs/last_run.json"
+        ) 
     else:
         print("AWS_S3_BUCKET not set. Skipping S3 upload.")
-
 
 if __name__ == "__main__":
     main()
