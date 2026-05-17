@@ -1,4 +1,4 @@
-name: Daily Steam Scraping
+name: Daily Steam ETL
 
 on:
   schedule:

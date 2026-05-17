@@ -1,46 +1,79 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import regexp_extract
 from pyspark.sql.functions import to_date, col
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-RAW_PATH_meta = f"file://{BASE_DIR}/data_lake/raw/appdetails_*.json"
-RAW_PATH_topsellers = f"file://{BASE_DIR}/data_lake/raw/topsellers_*.json"
+from dotenv import load_dotenv 
+import os 
 
-print("RAW_PATH_meta:", RAW_PATH_meta)
-print("RAW_PATH_topsellers:", RAW_PATH_topsellers)
+load_dotenv()
 
 spark = SparkSession.builder \
-    .appName("ETL") \
+    .appName("Steam Analysis Quality") \
+    .config(
+        "spark.jars.packages",
+        "org.apache.hadoop:hadoop-aws:3.3.4"
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.access.key",
+        os.getenv("AWS_ACCESS_KEY_ID")
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.secret.key",
+        os.getenv("AWS_SECRET_ACCESS_KEY")
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.endpoint",
+        "s3.eu-central-1.amazonaws.com"
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.impl",
+        "org.apache.hadoop.fs.s3a.S3AFileSystem"
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.aws.credentials.provider",
+        "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.connection.timeout",
+        "200000"
+    ) \
+    .config(
+        "spark.hadoop.fs.s3a.threads.keepalivetime",
+        "60000"
+    ) \
     .getOrCreate()
 
+
 # JSON laden
-#json listen laden (Komma getrennt)
-#df = spark.read.json("data_lake/raw/*.json")
-#json lines laden, liest immer alle jsons ein (wichtig für die spätere Automatisierung, da wir ja jeden Tag neue Daten haben)
-#df_meta = spark.read.option("multiline", "true").json("data_lake/raw/appdetails*.json")
-df_meta = spark.read.option("multiline", "true").json(RAW_PATH_meta)
-df_topsellers = spark.read.option("multiline", "true").json(RAW_PATH_topsellers)
+df_meta = spark.read \
+    .option("multiline", "true") \
+    .json("s3a://bde-steam-project-2026/raw/appdetails_*.json")
 
-#df_meta.printSchema()
-#df_meta.show(5, truncate=False)
+df_topsellers = spark.read \
+    .option("multiline", "true") \
+    .json("s3a://bde-steam-project-2026/raw/topsellers_*.json")
 
-# speichern als Parquet (overwrtite erlaubt, damit wir bei jedem Lauf die alten Daten überschreiben)
-df_meta.write.mode("overwrite").parquet("data_lake/processed/appdetails")
-df_topsellers.write.mode("overwrite").parquet("data_lake/processed/topsellers")
 
-df_metadaten = df_meta.withColumn("scrape_date", to_date(col("scrape_timestamp")))
+# scrape_date aus Timestamp erzeugen
+df_meta = df_meta.withColumn(
+    "scrape_date",
+    to_date(col("scrape_timestamp"))
+)
 
-df_metadaten.write \
-  .mode("overwrite") \
-  .partitionBy("scrape_date") \
-  .parquet("data_lake/processed/appdetails")
+
+# Parquet schreiben
+df_meta.write \
+    .mode("overwrite") \
+    .partitionBy("scrape_date") \
+    .parquet("s3a://bde-steam-project-2026/processed/appdetails")
+
 
 df_topsellers.write \
-  .mode("overwrite") \
-  .partitionBy("scrape_date") \
-  .parquet("data_lake/processed/topsellers")
+    .mode("overwrite") \
+    .partitionBy("scrape_date") \
+    .parquet("s3a://bde-steam-project-2026/processed/topsellers")
 
-df_metadaten.show(5)
+
+# Kontrolle
+df_meta.show(5)
 df_topsellers.show(5)
