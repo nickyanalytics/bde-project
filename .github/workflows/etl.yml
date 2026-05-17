@@ -1,0 +1,29 @@
+name: Daily Steam Scraping
+
+on:
+  schedule:
+    # regularly test the scraper every day at 8:00 AM
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: eu-central-1
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+        run: python etl.py
