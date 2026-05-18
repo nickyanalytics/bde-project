@@ -3,9 +3,9 @@ name: Daily Steam Scraping
 on:
   schedule:
     # regularly test the scraper every day at 8:00 AM
-    #- cron: "0 6 * * *"
+    - cron: "0 6 * * *"
     # test every 10 minutes
-    - cron: "*/10 * * * *"
+    #- cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
