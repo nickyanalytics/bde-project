@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  scrape:
+  etl:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,7 +22,7 @@ jobs:
           pip install -r requirements.txt
           python -c "import pyspark; print('PySpark version:', pyspark.__version__)"
 
-      - name: Run scraper
+      - name: Run ETL
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

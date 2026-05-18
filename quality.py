@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession 
-from pyspark.sql.functions import avg, countDistinct, col, explode 
+from pyspark.sql.functions import avg, countDistinct, col, explode, count
 from dotenv import load_dotenv 
 import os 
 
@@ -41,20 +41,20 @@ spark = SparkSession.builder \
     ) \
     .getOrCreate()
 
-df_top = spark.read.option("multiline", "true").json( "s3a://bde-steam-project-2026/raw/topsellers_*.json" ) 
-df_det = spark.read.option("multiline", "true").json( "s3a://bde-steam-project-2026/raw/appdetails_*.json" )
+df_top = spark.read.parquet( "s3a://bde-steam-project-2026/processed/topsellers/" ) 
+df_det = spark.read.parquet( "s3a://bde-steam-project-2026/processed/appdetails/" )
 
 #df = df_top.join(df_det, ["app_id", "country_code"], "left")
-df = df_top.alias("t").join(
+df_fullsteam = df_top.alias("t").join(
     df_det.alias("d"),
-    on=["app_id", "country_code"],
+    on=["app_id", "country_code", "scrape_date"],
     how="left"
 )
 
 #df.describe().show()
-df.printSchema()
+#df.printSchema()
 
-df.select(
+df_fullsteam.select(
     "t.*",
     "d.name",
     "d.final_price_cents",
@@ -62,4 +62,23 @@ df.select(
     "d.genres"
 ).show()
 
-df_top.select("scrape_date").distinct().orderBy("scrape_date").show()
+#df_top.select("scrape_date").distinct().orderBy("scrape_date").show()
+
+df_fullsteam.select(
+    "t.scrape_date",
+    "d.scrape_date"
+).distinct().orderBy("t.scrape_date").show()
+
+df_fullsteam.select(
+    "t.scrape_date",
+    "t.country_code",
+    "d.scrape_date",
+    "d.country_code"
+).distinct().orderBy("t.country_code", "t.scrape_date").show()
+
+# Überprüfen, ob es fehlende Werte in den Join-Spalten gibt -> 7. Mai nicht verwerten, besser löschen
+df_counts_per_day = df_fullsteam.groupBy("t.scrape_date") \
+    .pivot("t.country_code") \
+    .agg(count("*"))
+
+df_counts_per_day.show()
