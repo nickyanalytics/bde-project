@@ -1,4 +1,4 @@
-pyspark
+pyspark==3.5.1
 requests
 beautifulsoup4
 psycopg2-binary

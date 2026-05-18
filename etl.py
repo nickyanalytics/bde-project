@@ -41,6 +41,7 @@ spark = SparkSession.builder \
         "spark.hadoop.fs.s3a.threads.keepalivetime",
         "60000"
     ) \
+    .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4") \
     .getOrCreate()
 
 
