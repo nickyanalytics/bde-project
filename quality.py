@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession 
-from pyspark.sql.functions import avg, countDistinct, col, explode, count
+from pyspark.sql.functions import countDistinct, col, count, when
 from dotenv import load_dotenv 
 import os 
 
@@ -64,21 +64,64 @@ df_fullsteam.select(
 
 #df_top.select("scrape_date").distinct().orderBy("scrape_date").show()
 
+# Überprüfen, ob Tage felen
 df_fullsteam.select(
     "t.scrape_date",
     "d.scrape_date"
 ).distinct().orderBy("t.scrape_date").show()
 
-df_fullsteam.select(
-    "t.scrape_date",
-    "t.country_code",
-    "d.scrape_date",
-    "d.country_code"
-).distinct().orderBy("t.country_code", "t.scrape_date").show()
-
-# Überprüfen, ob es fehlende Werte in den Join-Spalten gibt -> 7. Mai nicht verwerten, besser löschen
+# Überprüfen, ob es fehlende Tage pro Land 
+# -> 7. Mai nicht verwerten, besser löschen, war ohne overwrite
 df_counts_per_day = df_fullsteam.groupBy("t.scrape_date") \
     .pivot("t.country_code") \
     .agg(count("*"))
 
 df_counts_per_day.show()
+
+print("Überprüfen, ob es pro APP-ID fehlende App-IDs gibt")
+print()
+df_app_id = df_fullsteam.groupBy("app_id") \
+    .agg(
+        countDistinct("name").alias("details_found")
+    )
+
+df_app_id.show(5)
+
+print("Überprüfen, ob es fehlende App-IDs/Namen gibt")
+total = df_fullsteam.count()
+missing = df_fullsteam.filter(col("name").isNull()).count()
+print()
+print(f"Missing details: {missing}/{total}")
+print()
+# Dubletten Check
+print()
+print("Dubletten Check:")
+print()
+df_dubletten = df_fullsteam.groupBy("scrape_date", "country_code", "app_id") \
+    .agg(
+        count("app_id").alias("count_rows")
+    ).filter(col("count_rows") > 1)
+
+print("\n====================")
+print("DUPLIKATE")
+print("====================")
+
+df_dubletten.orderBy("count_rows", ascending=False).show()
+df_dubletten.count()
+
+print("\n====================")
+print("Fehlende Werte in wichtigsten Spalten")
+print("====================")
+important_cols = [
+    "app_id",
+    "name",
+    "final_price_cents",
+    "discount_percent"
+]
+
+df_fullsteam.select([
+    count(
+        when(col(c).isNull(), c)
+    ).alias(c)
+    for c in important_cols
+]).show()
