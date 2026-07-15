@@ -3,7 +3,7 @@ name: Daily Steam ETL
 on:
   schedule:
     # regularly test the scraper every day at 8:00 AM
-    - cron: "0 10 * * *"
+    #- cron: "0 10 * * *"
   workflow_dispatch:
 
 jobs:
